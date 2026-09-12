@@ -10,6 +10,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.database import get_connection, init_db
 
+# Initializes sample users, financial history, and an update CSV when the database is empty.
+# Returns a status message describing whether sample data was created or already existed.
 def generate_mock_data():
     init_db()
     conn = get_connection()

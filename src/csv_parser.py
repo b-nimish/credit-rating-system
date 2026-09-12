@@ -3,6 +3,8 @@ import sqlite3
 import os
 from src.database import get_connection
 
+# Validates a financial-update CSV, matches rows to users by email, and stores recognized records.
+# Returns a success flag and a message summarizing imported and skipped rows.
 def import_csv_update(csv_file_path):
     if not os.path.exists(csv_file_path):
         return False, "File not found."

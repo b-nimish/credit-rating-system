@@ -4,10 +4,12 @@ import os
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 DB_PATH = os.path.join(DB_DIR, 'credit_system.db')
 
+# Ensures the data directory exists and returns a connection to the local SQLite database.
 def get_connection():
     os.makedirs(DB_DIR, exist_ok=True)
     return sqlite3.connect(DB_PATH)
 
+# Creates the users and financial-record tables when they do not already exist.
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()

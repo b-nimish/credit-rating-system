@@ -1,6 +1,8 @@
 import sqlite3
 from src.database import get_connection
 
+# Loads a user's financial history, calculates a bounded credit score, and determines eligibility.
+# Returns the score, status text, and maximum qualified loan amount.
 def calculate_credit_score(user_id):
     conn = get_connection()
     cursor = conn.cursor()

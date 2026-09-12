@@ -1,221 +1,373 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
 import sqlite3
-from src.database import get_connection
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+from src.auth import DEFAULT_USERNAME, authenticate
 from src.credit_engine import calculate_credit_score
 from src.csv_parser import import_csv_update
-from src.auth import DEFAULT_USERNAME, authenticate
+from src.database import get_connection
 
 
-class LoginWindow:
-    def __init__(self, root, on_success):
-        self.root = root
-        self.on_success = on_success
-        self.root.title("Credit Rating System - Login")
-        self.root.geometry("360x220")
-        self.root.resizable(False, False)
+# Creates the login form and connects it to the dashboard callback.
+def create_login_window(root, on_success):
+    root.title("Credit Rating System - Login")
+    root.geometry("360x220")
+    root.resizable(False, False)
 
-        frame = ttk.Frame(root, padding=30)
-        frame.pack(expand=True, fill="both")
+    frame = ttk.Frame(root, padding=30)
+    frame.pack(expand=True, fill="both")
 
-        ttk.Label(frame, text="Sign in", font=("Arial", 16, "bold")).pack(pady=(0, 18))
+    ttk.Label(frame, text="Sign in", font=("Arial", 16, "bold")).pack(pady=(0, 18))
+    ttk.Label(frame, text="Username").pack(anchor="w")
+    username_entry = ttk.Entry(frame)
+    username_entry.pack(fill="x", pady=(2, 10))
+    username_entry.insert(0, DEFAULT_USERNAME)
 
-        ttk.Label(frame, text="Username").pack(anchor="w")
-        self.username_entry = ttk.Entry(frame)
-        self.username_entry.pack(fill="x", pady=(2, 10))
-        self.username_entry.insert(0, DEFAULT_USERNAME)
+    ttk.Label(frame, text="Password").pack(anchor="w")
+    password_entry = ttk.Entry(frame, show="*")
+    password_entry.pack(fill="x", pady=(2, 12))
+    status_label = ttk.Label(frame, text="")
+    status_label.pack()
 
-        ttk.Label(frame, text="Password").pack(anchor="w")
-        self.password_entry = ttk.Entry(frame, show="*")
-        self.password_entry.pack(fill="x", pady=(2, 12))
+    login_button = ttk.Button(
+        frame,
+        text="Log in",
+        command=lambda: login(root, username_entry, password_entry, status_label, on_success),
+    )
+    login_button.pack(pady=6)
+    password_entry.bind(
+        "<Return>",
+        lambda event: login(root, username_entry, password_entry, status_label, on_success),
+    )
+    username_entry.focus_set()
 
-        self.status_label = ttk.Label(frame, text="")
-        self.status_label.pack()
 
-        ttk.Button(frame, text="Log in", command=self.login).pack(pady=6)
-        self.password_entry.bind("<Return>", lambda event: self.login())
-        self.username_entry.focus_set()
+# Validates login fields and opens the protected dashboard after successful authentication.
+def login(root, username_entry, password_entry, status_label, on_success):
+    username = username_entry.get().strip()
+    password = password_entry.get()
+    if authenticate(username, password):
+        on_success()
+        return
 
-    def login(self):
-        username = self.username_entry.get().strip()
-        password = self.password_entry.get()
-        if authenticate(username, password):
-            self.on_success()
-            return
+    status_label.configure(text="Invalid username or password")
+    password_entry.delete(0, tk.END)
+    password_entry.focus_set()
 
-        self.status_label.configure(text="Invalid username or password")
-        self.password_entry.delete(0, tk.END)
-        self.password_entry.focus_set()
 
-class CreditSystemApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Credit Rating & Loan Eligibility System")
-        self.root.geometry("850x550")
-        self.all_rows = []
-        self.sort_column = None
-        self.sort_reverse = False
-        
-        # Configure Grid Layout
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(1, weight=1)
-        
-        self.create_top_panel()
-        self.create_main_table()
-        self.refresh_table()
+# Builds the dashboard controls and table, then loads the initial user list.
+def create_dashboard(root):
+    state = {
+        "root": root,
+        "all_rows": [],
+        "sort_column": None,
+        "sort_reverse": False,
+    }
+    root.title("Credit Rating & Loan Eligibility System")
+    root.geometry("850x550")
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(1, weight=1)
+    create_top_panel(state)
+    create_main_table(state)
+    refresh_table(state)
+    return state
 
-    def create_top_panel(self):
-        top_frame = ttk.Frame(self.root, padding=10)
-        top_frame.grid(row=0, column=0, sticky="ew")
-        top_frame.columnconfigure(2, weight=1)
-        
-        # Actions
-        btn_import = ttk.Button(top_frame, text="📥 Import Update CSV", command=self.upload_csv)
-        btn_import.pack(side="left", padx=5)
-        
-        btn_refresh = ttk.Button(top_frame, text="🔄 Refresh List", command=self.refresh_table)
-        btn_refresh.pack(side="left", padx=5)
 
-        ttk.Label(top_frame, text="Search:").pack(side="left", padx=(18, 4))
-        self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(top_frame, textvariable=self.search_var, width=28)
-        self.search_entry.pack(side="left", padx=4)
-        self.search_var.trace_add("write", lambda *_: self.display_rows())
-        ttk.Button(top_frame, text="Clear", command=self.clear_search).pack(side="left", padx=4)
-        
-        lbl_hint = ttk.Label(top_frame, text="Double-click any applicant row to compute Credit Rating & Loan Limits", font=("Arial", 9, "italic"))
-        lbl_hint.pack(side="right", padx=10)
+# Creates controls for importing, refreshing, adding, deleting, and searching users.
+def create_top_panel(state):
+    root = state["root"]
+    top_frame = ttk.Frame(root, padding=10)
+    top_frame.grid(row=0, column=0, sticky="ew")
+    top_frame.columnconfigure(2, weight=1)
 
-    def create_main_table(self):
-        table_frame = ttk.Frame(self.root, padding=10)
-        table_frame.grid(row=1, column=0, sticky="nsew")
-        
-        table_frame.columnconfigure(0, weight=1)
-        table_frame.rowconfigure(0, weight=1)
-        
-        columns = ("id", "first_name", "last_name", "email", "employment")
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings")
-        
-        headings = {
-            "id": "ID",
-            "first_name": "First Name",
-            "last_name": "Last Name",
-            "email": "Email ID",
-            "employment": "Employment Status",
-        }
-        for column, heading in headings.items():
-            self.tree.heading(
-                column,
-                text=heading,
-                command=lambda selected_column=column: self.sort_rows(selected_column),
-            )
-        
-        self.tree.column("id", width=50, anchor="center")
-        self.tree.column("first_name", width=120)
-        self.tree.column("last_name", width=120)
-        self.tree.column("email", width=250)
-        self.tree.column("employment", width=150)
-        
-        # Scrollbars
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        
-        self.tree.bind("<Double-1>", self.on_row_double_click)
+    ttk.Button(
+        top_frame,
+        text="Import Update CSV",
+        command=lambda: upload_csv(state),
+    ).pack(side="left", padx=5)
+    ttk.Button(
+        top_frame,
+        text="Refresh List",
+        command=lambda: refresh_table(state),
+    ).pack(side="left", padx=5)
+    ttk.Button(
+        top_frame,
+        text="Delete Selected",
+        command=lambda: delete_selected(state),
+    ).pack(side="left", padx=5)
+    ttk.Button(
+        top_frame,
+        text="Add User",
+        command=lambda: add_user(state),
+    ).pack(side="left", padx=5)
 
-    def refresh_table(self):
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT user_id, first_name, last_name, email, employment_status FROM users")
-            self.all_rows = cursor.fetchall()
+    ttk.Label(top_frame, text="Search:").pack(side="left", padx=(18, 4))
+    state["search_var"] = tk.StringVar()
+    state["search_entry"] = ttk.Entry(top_frame, textvariable=state["search_var"], width=28)
+    state["search_entry"].pack(side="left", padx=4)
+    state["search_var"].trace_add("write", lambda *_: display_rows(state))
+    ttk.Button(
+        top_frame,
+        text="Clear",
+        command=lambda: clear_search(state),
+    ).pack(side="left", padx=4)
+    ttk.Label(
+        top_frame,
+        text="Double-click any applicant row to compute Credit Rating & Loan Limits",
+        font=("Arial", 9, "italic"),
+    ).pack(side="right", padx=10)
+
+
+# Creates the sortable applicant table and binds double-click assessment behavior.
+def create_main_table(state):
+    root = state["root"]
+    table_frame = ttk.Frame(root, padding=10)
+    table_frame.grid(row=1, column=0, sticky="nsew")
+    table_frame.columnconfigure(0, weight=1)
+    table_frame.rowconfigure(0, weight=1)
+
+    columns = ("id", "first_name", "last_name", "email", "employment")
+    tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+    state["tree"] = tree
+    headings = {
+        "id": "ID",
+        "first_name": "First Name",
+        "last_name": "Last Name",
+        "email": "Email ID",
+        "employment": "Employment Status",
+    }
+    for column, heading in headings.items():
+        tree.heading(
+            column,
+            text=heading,
+            command=lambda selected_column=column: sort_rows(state, selected_column),
+        )
+
+    tree.column("id", width=50, anchor="center")
+    tree.column("first_name", width=120)
+    tree.column("last_name", width=120)
+    tree.column("email", width=250)
+    tree.column("employment", width=150)
+
+    scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    scrollbar.grid(row=0, column=1, sticky="ns")
+    tree.bind("<Double-1>", lambda event: on_row_double_click(event, state))
+
+
+# Loads users from SQLite into memory and redraws the visible table.
+def refresh_table(state):
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, first_name, last_name, email, employment_status FROM users")
+        state["all_rows"] = cursor.fetchall()
+        display_rows(state)
+    except Exception as error:
+        messagebox.showerror("Error", f"Could not load users: {error}")
+    finally:
+        if conn is not None:
             conn.close()
-            self.display_rows()
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not load users: {str(e)}")
 
-    def display_rows(self):
-        search_text = self.search_var.get().strip().casefold()
-        rows = self.all_rows
-        if search_text:
-            rows = [
-                row for row in rows
-                if search_text in " ".join(str(value) for value in row).casefold()
-            ]
 
-        if self.sort_column is not None:
-            column_index = self.tree["columns"].index(self.sort_column)
-            if self.sort_column == "id":
-                sort_key = lambda row: int(row[column_index])
-            else:
-                sort_key = lambda row: str(row[column_index]).casefold()
-            rows = sorted(
-                rows,
-                key=sort_key,
-                reverse=self.sort_reverse,
-            )
+# Applies the current search and sort settings, then redraws the table rows.
+def display_rows(state):
+    search_text = state["search_var"].get().strip().casefold()
+    rows = state["all_rows"]
+    tree = state["tree"]
+    if search_text:
+        rows = [
+            row for row in rows
+            if search_text in " ".join(str(value) for value in row).casefold()
+        ]
 
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        for row in rows:
-            self.tree.insert("", "end", values=row)
-
-    def sort_rows(self, column):
-        if self.sort_column == column:
-            self.sort_reverse = not self.sort_reverse
+    sort_column = state["sort_column"]
+    if sort_column is not None:
+        column_index = tree["columns"].index(sort_column)
+        if sort_column == "id":
+            sort_key = lambda row: int(row[column_index])
         else:
-            self.sort_column = column
-            self.sort_reverse = False
-        self.display_rows()
+            sort_key = lambda row: str(row[column_index]).casefold()
+        rows = sorted(rows, key=sort_key, reverse=state["sort_reverse"])
 
-    def clear_search(self):
-        self.search_var.set("")
-        self.search_entry.focus_set()
+    for item in tree.get_children():
+        tree.delete(item)
+    for row in rows:
+        tree.insert("", "end", values=row)
 
-    def upload_csv(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        if file_path:
-            success, message = import_csv_update(file_path)
-            if success:
-                messagebox.showinfo("Success", message)
-                self.refresh_table()
-            else:
-                messagebox.showerror("Import Failed", message)
 
-    def on_row_double_click(self, event):
-        selected_item = self.tree.selection()
-        if not selected_item:
-            return
-            
-        user_vals = self.tree.item(selected_item, "values")
-        user_id = user_vals[0]
-        full_name = f"{user_vals[1]} {user_vals[2]}"
-        
-        # Calculate scores
-        score, status, max_loan = calculate_credit_score(user_id)
-        
-        # Pop up window with evaluation summary
-        pop = tk.Toplevel(self.root)
-        pop.title(f"Credit Score Assessment: {full_name}")
-        pop.geometry("450x300")
-        pop.resizable(False, False)
-        
-        lbl_title = ttk.Label(pop, text=f"Assessment Report", font=("Arial", 14, "bold"))
-        lbl_title.pack(pady=15)
-        
-        lbl_name = ttk.Label(pop, text=f"Applicant: {full_name}", font=("Arial", 11))
-        lbl_name.pack(pady=5)
-        
-        lbl_score = ttk.Label(pop, text=f"Credit Score: {score} / 850", font=("Arial", 12, "bold"), foreground="green" if score>=650 else "red")
-        lbl_score.pack(pady=8)
-        
-        lbl_status = ttk.Label(pop, text=f"Eligibility Status: {status}", font=("Arial", 10))
-        lbl_status.pack(pady=5)
-        
-        lbl_loan = ttk.Label(pop, text=f"Maximum Qualified Loan Amount: ₹{max_loan:,}", font=("Arial", 11, "bold"), foreground="navy")
-        lbl_loan.pack(pady=10)
-        
-        btn_close = ttk.Button(pop, text="Close", command=pop.destroy)
-        btn_close.pack(pady=15)
+# Sorts by a selected column and toggles direction on repeated header clicks.
+def sort_rows(state, column):
+    if state["sort_column"] == column:
+        state["sort_reverse"] = not state["sort_reverse"]
+    else:
+        state["sort_column"] = column
+        state["sort_reverse"] = False
+    display_rows(state)
+
+
+# Clears the search field and returns focus to it.
+def clear_search(state):
+    state["search_var"].set("")
+    state["search_entry"].focus_set()
+
+
+# Confirms deletion, removes a selected profile and its financial history, then reloads the table.
+def delete_selected(state):
+    tree = state["tree"]
+    selected_items = tree.selection()
+    if not selected_items:
+        messagebox.showwarning("No Selection", "Select an applicant before deleting.")
+        return
+
+    user_values = tree.item(selected_items[0], "values")
+    user_id = user_values[0]
+    full_name = f"{user_values[1]} {user_values[2]}"
+    confirmed = messagebox.askyesno(
+        "Confirm Deletion",
+        f"Delete {full_name} and all of their financial records?\n\nThis action cannot be undone.",
+    )
+    if not confirmed:
+        return
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM financial_records WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        conn.commit()
+        messagebox.showinfo("Deleted", f"{full_name} was deleted.")
+        refresh_table(state)
+    except Exception as error:
+        if conn is not None:
+            conn.rollback()
+        messagebox.showerror("Delete Failed", f"Could not delete {full_name}: {error}")
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+# Opens a form for entering and saving a new user profile.
+def add_user(state):
+    dialog = tk.Toplevel(state["root"])
+    dialog.title("Add New User")
+    dialog.geometry("380x300")
+    dialog.resizable(False, False)
+    dialog.transient(state["root"])
+    dialog.grab_set()
+
+    fields = (
+        ("First Name", "first_name"),
+        ("Last Name", "last_name"),
+        ("Email", "email"),
+        ("Date of Birth", "date_of_birth"),
+        ("Employment Status", "employment_status"),
+    )
+    entries = {}
+    form = ttk.Frame(dialog, padding=20)
+    form.pack(fill="both", expand=True)
+    for row_index, (label, field_name) in enumerate(fields):
+        ttk.Label(form, text=label).grid(row=row_index, column=0, sticky="w", padx=(0, 10), pady=5)
+        entry = ttk.Entry(form, width=30)
+        entry.grid(row=row_index, column=1, sticky="ew", pady=5)
+        entries[field_name] = entry
+    form.columnconfigure(1, weight=1)
+    ttk.Button(
+        form,
+        text="Save User",
+        command=lambda: save_user(dialog, entries, state),
+    ).grid(row=len(fields), column=1, sticky="e", pady=(15, 0))
+    entries["first_name"].focus_set()
+
+
+# Validates and inserts a new profile, handling duplicate emails and database errors.
+def save_user(dialog, entries, state):
+    values = {field_name: entry.get().strip() for field_name, entry in entries.items()}
+    if any(not value for value in values.values()):
+        messagebox.showwarning("Incomplete Details", "Please complete every field.", parent=dialog)
+        return
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO users (first_name, last_name, email, date_of_birth, employment_status)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                values["first_name"],
+                values["last_name"],
+                values["email"].lower(),
+                values["date_of_birth"],
+                values["employment_status"],
+            ),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        if conn is not None:
+            conn.rollback()
+        messagebox.showerror("Could Not Add User", "That email address already exists.", parent=dialog)
+        return
+    except Exception as error:
+        if conn is not None:
+            conn.rollback()
+        messagebox.showerror("Could Not Add User", str(error), parent=dialog)
+        return
+    finally:
+        if conn is not None:
+            conn.close()
+
+    dialog.destroy()
+    refresh_table(state)
+    messagebox.showinfo("User Added", "The new user was added successfully.", parent=state["root"])
+
+
+# Opens a CSV picker, imports the selected update file, and refreshes the table on success.
+def upload_csv(state):
+    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+    if not file_path:
+        return
+    success, message = import_csv_update(file_path)
+    if success:
+        messagebox.showinfo("Success", message)
+        refresh_table(state)
+    else:
+        messagebox.showerror("Import Failed", message)
+
+
+# Calculates and displays the selected applicant's credit score and loan eligibility report.
+def on_row_double_click(event, state):
+    selected_item = state["tree"].selection()
+    if not selected_item:
+        return
+
+    user_values = state["tree"].item(selected_item[0], "values")
+    user_id = user_values[0]
+    full_name = f"{user_values[1]} {user_values[2]}"
+    score, status, max_loan = calculate_credit_score(user_id)
+
+    pop = tk.Toplevel(state["root"])
+    pop.title(f"Credit Score Assessment: {full_name}")
+    pop.geometry("450x300")
+    pop.resizable(False, False)
+    ttk.Label(pop, text="Assessment Report", font=("Arial", 14, "bold")).pack(pady=15)
+    ttk.Label(pop, text=f"Applicant: {full_name}", font=("Arial", 11)).pack(pady=5)
+    ttk.Label(
+        pop,
+        text=f"Credit Score: {score} / 850",
+        font=("Arial", 12, "bold"),
+        foreground="green" if score >= 650 else "red",
+    ).pack(pady=8)
+    ttk.Label(pop, text=f"Eligibility Status: {status}", font=("Arial", 10)).pack(pady=5)
+    ttk.Label(
+        pop,
+        text=f"Maximum Qualified Loan Amount: Rs.{max_loan:,}",
+        font=("Arial", 11, "bold"),
+        foreground="navy",
+    ).pack(pady=10)
+    ttk.Button(pop, text="Close", command=pop.destroy).pack(pady=15)

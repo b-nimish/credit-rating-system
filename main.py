@@ -1,12 +1,13 @@
 import tkinter as tk
-import os
 from src.database import init_db
-from src.gui import CreditSystemApp
+from src.gui import create_dashboard, create_login_window
 from utils.mock_generator import generate_mock_data
 
+# Starts the application and shows the login screen before exposing the database-backed dashboard.
 def main():
     root = tk.Tk()
 
+    # Replaces the login controls with the dashboard after authentication succeeds.
     def open_dashboard():
         for widget in root.winfo_children():
             widget.destroy()
@@ -16,10 +17,9 @@ def main():
         status_msg = generate_mock_data()
         print(status_msg)
         print("Booting Tkinter Engine Dashboard UI...")
-        CreditSystemApp(root)
+        create_dashboard(root)
 
-    from src.gui import LoginWindow
-    LoginWindow(root, open_dashboard)
+    create_login_window(root, open_dashboard)
     root.mainloop()
 
 if __name__ == '__main__':
