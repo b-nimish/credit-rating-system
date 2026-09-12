@@ -21,12 +21,20 @@ def generate_mock_data():
         conn.close()
         return "Database already initialized with data."
         
-    first_names = ["Arjun", "Neha", "Rohan", "Priya", "Amit", "Sneha", "Vikram", "Ananya", "Rahul", "Pooja"]
-    last_names = ["Sharma", "Verma", "Kumar", "Patel", "Singh", "Joshi", "Das", "Mehta", "Reddy", "Nair"]
+    first_names = ["Arjun", "Neha", "Rohan", "Priya", "Amit", "Sneha", "Vikram", "Ananya", "Rahul", "Pooja",
+                   "Karan", "Isha", "Manav", "Divya", "Sahil", "Nisha", "Aditya", "Sakshi", "Nitin", "Meera",
+                   "Harsh", "Tanvi", "Yash", "Mitali", "Rajat", "Kavya", "Om", "Ritika", "Vipul", "Aisha",
+                   "Dev", "Shreya", "Parth", "Komal", "Tushar", "Esha", "Gaurav", "Heena", "Jay", "Riya",
+                   "Abhishek", "Jiya", "Sameer", "Anjali", "Varun", "Pallavi", "Nikhil", "Swati", "Deepak", "Ankita"]
+    last_names = ["Sharma", "Verma", "Kumar", "Patel", "Singh", "Joshi", "Das", "Mehta", "Reddy", "Nair",
+                  "Mishra", "Gupta", "Iyer", "Bose", "Saxena", "Kapoor", "Kulkarni", "Naik", "Roy", "Sen",
+                  "Chopra", "Agarwal", "Malhotra", "Jain", "Balakrishnan", "Yadav", "Rao", "Banerjee", "Dutta", "Sethi",
+                  "Bhatia", "Desai", "Pillai", "Murthy", "Khanna", "Bharadwaj", "Nadkarni", "Khan", "Sengupta", "Vora",
+                  "Chatterjee", "Prasad", "Tripathi", "Lal", "Pandey", "Mayekar", "Soni", "Bhardwaj", "Chauhan", "Shah"]
     statuses = ["Employed", "Self-Employed", "Unemployed"]
     
     users_data = []
-    for i in range(10):
+    for i in range(50):
         fname = first_names[i]
         lname = last_names[i]
         email = f"{fname.lower()}.{lname.lower()}@example.com"

@@ -76,6 +76,11 @@ Launch the primary initialization script. On your very first boot, the system wi
 python main.py
 ```
 
+The application displays a login screen before opening the dashboard. Use the default credentials:
+
+* **Username:** `admin`
+* **Password:** `password`
+
 ---
 
 ## 🕹️ How to Use the Application
