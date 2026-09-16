@@ -47,9 +47,20 @@ def init_db():
             existing_loan_emi REAL NOT NULL,
             credit_card_utilization REAL NOT NULL,
             missed_payments_count INTEGER NOT NULL,
+            employment_tenure_months INTEGER NOT NULL DEFAULT 0,
+            savings_balance REAL NOT NULL DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users (user_id)
         )
     ''')
+    columns = {row[1] for row in cursor.execute("PRAGMA table_info(financial_records)")}
+    if "employment_tenure_months" not in columns:
+        cursor.execute(
+            "ALTER TABLE financial_records ADD COLUMN employment_tenure_months INTEGER NOT NULL DEFAULT 0"
+        )
+    if "savings_balance" not in columns:
+        cursor.execute(
+            "ALTER TABLE financial_records ADD COLUMN savings_balance REAL NOT NULL DEFAULT 0"
+        )
     
     conn.commit()
     conn.close()

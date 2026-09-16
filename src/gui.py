@@ -19,6 +19,8 @@ from src.database import get_connection
 
 # Creates the login form and connects it to the dashboard callback.
 def create_login_window(root, on_admin_success, on_user_success):
+    for widget in root.winfo_children():
+        widget.destroy()
     root.title("Credit Rating System - Login")
     root.geometry("420x300")
     root.resizable(False, False)
@@ -28,14 +30,25 @@ def create_login_window(root, on_admin_success, on_user_success):
 
     ttk.Label(frame, text="Choose login type", font=("Arial", 16, "bold")).pack(pady=(0, 22))
     ttk.Button(frame, text="Admin Login", command=lambda: show_login_form(
-        root, "Admin Login", "Username", DEFAULT_USERNAME, on_admin_success, False
+        root, "Admin Login", "Username", DEFAULT_USERNAME, on_admin_success, False,
+        on_admin_success, on_user_success,
     )).pack(fill="x", pady=6)
     ttk.Button(frame, text="User Login", command=lambda: show_login_form(
-        root, "User Login", "Email", "", on_user_success, True
+        root, "User Login", "Email", "", on_user_success, True,
+        on_admin_success, on_user_success,
     )).pack(fill="x", pady=6)
 
 
-def show_login_form(root, title, identity_label, default_identity, on_success, is_user):
+def show_login_form(
+    root,
+    title,
+    identity_label,
+    default_identity,
+    on_success,
+    is_user,
+    on_admin_success,
+    on_user_success,
+):
     for widget in root.winfo_children():
         widget.destroy()
     root.title(f"Credit Rating System - {title}")
@@ -58,9 +71,11 @@ def show_login_form(root, title, identity_label, default_identity, on_success, i
             root, identity_entry, password_entry, status_label, on_success, is_user
         ),
     ).pack(pady=6)
-    ttk.Button(frame, text="Back", command=lambda: create_login_window(
-        root, on_success if not is_user else lambda: None, on_success if is_user else lambda _: None
-    )).pack()
+    ttk.Button(
+        frame,
+        text="Back",
+        command=lambda: create_login_window(root, on_admin_success, on_user_success),
+    ).pack()
     password_entry.bind(
         "<Return>",
         lambda event: login(root, identity_entry, password_entry, status_label, on_success, is_user),
@@ -661,7 +676,7 @@ def on_row_double_click(event, state):
 def show_financial_details(parent, user_id, full_name):
     details = tk.Toplevel(parent)
     details.title(f"Financial Details: {full_name}")
-    details.geometry("820x320")
+    details.geometry("1120x320")
     details.resizable(True, True)
     details.transient(parent)
 
@@ -671,6 +686,8 @@ def show_financial_details(parent, user_id, full_name):
         "existing_loan_emi",
         "credit_card_utilization",
         "missed_payments_count",
+        "employment_tenure_months",
+        "savings_balance",
     )
     headings = {
         "record_date": "Record Date",
@@ -678,6 +695,8 @@ def show_financial_details(parent, user_id, full_name):
         "existing_loan_emi": "Existing Loan EMI",
         "credit_card_utilization": "Credit Card Utilization",
         "missed_payments_count": "Missed Payments",
+        "employment_tenure_months": "Employment Tenure (Months)",
+        "savings_balance": "Savings Balance",
     }
     frame = ttk.Frame(details, padding=12)
     frame.pack(fill="both", expand=True)
@@ -686,7 +705,7 @@ def show_financial_details(parent, user_id, full_name):
     tree = ttk.Treeview(frame, columns=columns, show="headings")
     for column in columns:
         tree.heading(column, text=headings[column])
-        tree.column(column, width=145, anchor="center")
+        tree.column(column, width=135, anchor="center")
     scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar.set)
     tree.grid(row=0, column=0, sticky="nsew")
@@ -698,7 +717,8 @@ def show_financial_details(parent, user_id, full_name):
         records = conn.execute(
             """
             SELECT record_date, monthly_income, existing_loan_emi,
-                   credit_card_utilization, missed_payments_count
+                     credit_card_utilization, missed_payments_count,
+                     employment_tenure_months, savings_balance
             FROM financial_records
             WHERE user_id = ?
             ORDER BY record_date DESC

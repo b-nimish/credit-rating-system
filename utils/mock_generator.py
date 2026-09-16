@@ -52,17 +52,25 @@ def generate_mock_data():
     # Generate historical base entries for Month 1 (Jan 2026)
     cursor.execute("SELECT user_id, email FROM users")
     users = cursor.fetchall()
+    jan_tenures = {}
     
     for uid, email in users:
         income = random.randint(40000, 150000)
         emi = random.choice([0, 0, 5000, 12000, 25000])
         utilization = round(random.uniform(0.05, 0.85), 2)
         missed = random.choice([0, 0, 0, 0, 1])
+        tenure = random.randint(3, 120)
+        savings = random.randint(10000, 750000)
+        jan_tenures[email] = tenure
         
         cursor.execute('''
-            INSERT INTO financial_records (user_id, record_date, monthly_income, existing_loan_emi, credit_card_utilization, missed_payments_count)
-            VALUES (?, '2026-01-15', ?, ?, ?, ?)
-        ''', (uid, income, emi, utilization, missed))
+            INSERT INTO financial_records (
+                user_id, record_date, monthly_income, existing_loan_emi,
+                credit_card_utilization, missed_payments_count,
+                employment_tenure_months, savings_balance
+            )
+            VALUES (?, '2026-01-15', ?, ?, ?, ?, ?, ?)
+        ''', (uid, income, emi, utilization, missed, tenure, savings))
         
     conn.commit()
     
@@ -72,14 +80,29 @@ def generate_mock_data():
     csv_path = os.path.join(update_dir, 'february_updates.csv')
     
     with open(csv_path, 'w') as f:
-        f.write("email,record_date,monthly_income,existing_loan_emi,credit_card_utilization,missed_payments_count\n")
+        f.write("email,record_date,monthly_income,existing_loan_emi,credit_card_utilization,missed_payments_count,employment_tenure_months,savings_balance\n")
         for uid, email in users:
             # Shift data slightly to simulate updates
             income = random.randint(40000, 150000)
             emi = random.choice([0, 0, 5000, 12000, 25000])
             utilization = round(random.uniform(0.05, 0.85), 2)
             missed = random.choice([0, 0, 0, 0, 2])
-            f.write(f"{email},2026-02-15,{income},{emi},{utilization},{missed}\n")
+            tenure = jan_tenures[email] + 1
+            savings = random.randint(10000, 750000)
+            f.write(f"{email},2026-02-15,{income},{emi},{utilization},{missed},{tenure},{savings}\n")
+
+    # Create a batch update file template for Month 3 (Mar 2026)
+    march_path = os.path.join(update_dir, 'March_updates.csv')
+    with open(march_path, 'w') as f:
+        f.write("email,record_date,monthly_income,existing_loan_emi,credit_card_utilization,missed_payments_count,employment_tenure_months,savings_balance\n")
+        for uid, email in users:
+            income = random.randint(40000, 150000)
+            emi = random.choice([0, 0, 5000, 12000, 25000])
+            utilization = round(random.uniform(0.05, 0.85), 2)
+            missed = random.choice([0, 0, 0, 0, 2])
+            tenure = jan_tenures[email] + 2
+            savings = random.randint(10000, 750000)
+            f.write(f"{email},2026-03-15,{income},{emi},{utilization},{missed},{tenure},{savings}\n")
             
     conn.close()
     return f"Sample database built. Mock CSV template created at: {csv_path}"

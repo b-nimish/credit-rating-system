@@ -11,7 +11,11 @@ def import_csv_update(csv_file_path):
         
     try:
         df = pd.read_csv(csv_file_path)
-        required_cols = ['email', 'record_date', 'monthly_income', 'existing_loan_emi', 'credit_card_utilization', 'missed_payments_count']
+        required_cols = [
+            'email', 'record_date', 'monthly_income', 'existing_loan_emi',
+            'credit_card_utilization', 'missed_payments_count',
+            'employment_tenure_months', 'savings_balance',
+        ]
         
         if not all(col in df.columns for col in required_cols):
             return False, f"CSV must contain headers: {', '.join(required_cols)}"
@@ -31,9 +35,18 @@ def import_csv_update(csv_file_path):
                 user_id = user[0]
                 # Insert dynamic performance history snapshot
                 cursor.execute('''
-                    INSERT INTO financial_records (user_id, record_date, monthly_income, existing_loan_emi, credit_card_utilization, missed_payments_count)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (user_id, row['record_date'], row['monthly_income'], row['existing_loan_emi'], row['credit_card_utilization'], row['missed_payments_count']))
+                    INSERT INTO financial_records (
+                        user_id, record_date, monthly_income, existing_loan_emi,
+                        credit_card_utilization, missed_payments_count,
+                        employment_tenure_months, savings_balance
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    user_id, row['record_date'], row['monthly_income'],
+                    row['existing_loan_emi'], row['credit_card_utilization'],
+                    row['missed_payments_count'], row['employment_tenure_months'],
+                    row['savings_balance'],
+                ))
                 success_count += 1
             else:
                 skipped_count += 1

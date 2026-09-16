@@ -58,6 +58,8 @@ Tracks sequential, historical financial snapshots over time fed by periodic CSV 
 * `existing_loan_emi` (REAL): Outgoing monthly debt payments.
 * `credit_card_utilization` (REAL): Credit card balance ratio (from `0.00` to `1.00`).
 * `missed_payments_count` (INTEGER): Payment delinquency tally within that cycle.
+* `employment_tenure_months` (INTEGER): Months spent with the current employer.
+* `savings_balance` (REAL): Available savings balance for the financial snapshot.
 
 ---
 
@@ -76,7 +78,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Initialization and Execution
-Launch the primary initialization script. On your very first boot, the system will **automatically generate the local SQLite database**, fill it with mock user profiles, and save a sample transaction file (`february_updates.csv`) inside your updates folder:
+Launch the primary initialization script. On your very first boot, the system will **automatically generate the local SQLite database**, fill it with mock user profiles, and create synthetic January, February, and March financial data. The February and March update files use employment tenure values exactly one and two months above each applicant's January database value:
 ```bash
 python main.py
 ```
@@ -105,10 +107,10 @@ User passwords follow the simple lowercase `namesurname123` format, for example 
 9. **Refresh the list:** Click **Refresh List** to reload the latest users from the database. This redraws the table but does not modify database records or recalculate scores.
 10. **Add a user:** Click **Add User** and provide the first name, last name, email, date of birth, and employment status. The database assigns the user's ID automatically. Email addresses must be unique. The initial password is shown after creation.
 11. **Delete an entry:** Select an applicant and click **Delete Selected**. The application asks for confirmation before deleting the applicant and all linked financial records. Canceling the confirmation leaves the data unchanged.
-12. **Ingest new records:** Click **Import Update CSV** in the header and select an update file. The app matches rows to users by email, adds recognized financial records, reports skipped emails, and refreshes the list.
+12. **Ingest new records:** Click **Import Update CSV** in the header and select an update file. The app matches rows to users by email, adds recognized financial records, reports skipped emails, and refreshes the list. A CSV row with an email that is not already in the database is skipped; it does not create a user, profile, financial record, or password. Add the user first through **Add User**, then import their financial update. The CSV must contain `email`, `record_date`, `monthly_income`, `existing_loan_emi`, `credit_card_utilization`, `missed_payments_count`, `employment_tenure_months`, and `savings_balance` columns. Importing the same file more than once creates duplicate financial records.
 13. **Credit analytics summary:** Double-click any applicant row to open an analysis modal. The assessment window includes a **View Details** button that opens the applicant's financial records:
-   * **Financial details:** Record date, monthly income, existing loan EMI, credit card utilization, and missed payments.
-   * **Calculated Credit Score:** A dynamic calculation ranging from 300 to 850 based on payment trends, utilization ratios, and income stability.
+   * **Financial details:** Record date, monthly income, existing loan EMI, credit card utilization, missed payments, employment tenure, and savings balance.
+   * **Calculated Credit Score:** A dynamic calculation ranging from 300 to 850 based on payment trends, utilization ratios, debt-to-income ratio, employment tenure, and savings balance.
    * **Loan Approval Assessment:** Instantly determines if the client is *Approved* or *Denied* for new financing based on debt-to-income limits.
    * **Historical Trend Log:** A clean table showcasing their past record cycles.
 

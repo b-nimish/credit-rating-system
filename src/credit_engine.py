@@ -8,7 +8,8 @@ def calculate_credit_score(user_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT monthly_income, existing_loan_emi, credit_card_utilization, missed_payments_count
+         SELECT monthly_income, existing_loan_emi, credit_card_utilization,
+             missed_payments_count, employment_tenure_months, savings_balance
         FROM financial_records WHERE user_id = ?
         ORDER BY record_date DESC
     ''', (user_id,))
@@ -26,6 +27,8 @@ def calculate_credit_score(user_id):
     latest_income = latest_record[0]
     latest_emi = latest_record[1]
     latest_utilization = latest_record[2]
+    latest_tenure = latest_record[4]
+    latest_savings = latest_record[5]
     
     total_missed_payments = sum(r[3] for r in records)
     avg_utilization = sum(r[2] for r in records) / total_records
@@ -48,6 +51,26 @@ def calculate_credit_score(user_id):
         score -= 60
     elif dti < 0.20:
         score += 40
+
+    # 4. Employment stability and savings cushion
+    if latest_tenure >= 60:
+        score += 30
+    elif latest_tenure >= 24:
+        score += 20
+    elif latest_tenure >= 12:
+        score += 10
+    elif latest_tenure < 6:
+        score -= 15
+
+    savings_months = (latest_savings / latest_income) if latest_income > 0 else 0
+    if savings_months >= 6:
+        score += 30
+    elif savings_months >= 3:
+        score += 20
+    elif savings_months >= 1:
+        score += 10
+    elif latest_savings <= 0:
+        score -= 10
         
     # Bound score between 300 and 850
     score = max(300, min(850, score))
