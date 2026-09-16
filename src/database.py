@@ -29,6 +29,13 @@ def init_db():
     columns = {row[1] for row in cursor.execute("PRAGMA table_info(users)")}
     if "password_hash" not in columns:
         cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS admins (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL
+        )
+    ''')
     
     # Create financial_records table
     cursor.execute('''

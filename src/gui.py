@@ -6,8 +6,11 @@ from src.auth import (
     DEFAULT_USERNAME,
     authenticate_admin,
     authenticate_user,
+    change_admin_password,
+    change_user_password,
     generate_user_password,
     hash_user_password,
+    set_user_password,
 )
 from src.credit_engine import calculate_credit_score
 from src.csv_parser import import_csv_update
@@ -79,11 +82,11 @@ def login(root, identity_entry, password_entry, status_label, on_success, is_use
     password_entry.focus_set()
 
 
-def create_user_view(root, user):
+def create_user_view(root, user, on_logout):
     root.title("My Loan Eligibility")
-    root.geometry("480x360")
+    root.geometry("520x440")
     root.resizable(False, False)
-    frame = ttk.Frame(root, padding=30)
+    frame = ttk.Frame(root, padding=24)
     frame.pack(expand=True, fill="both")
 
     score, status, max_loan = calculate_credit_score(user["user_id"])
@@ -104,16 +107,89 @@ def create_user_view(root, user):
         font=("Arial", 12, "bold"),
         foreground="navy",
     ).pack(pady=10)
-    ttk.Button(frame, text="Close", command=root.quit).pack(pady=15)
+    ttk.Button(
+        frame,
+        text="View Details",
+        command=lambda: show_financial_details(root, user["user_id"], full_name),
+    ).pack(pady=5)
+    ttk.Button(
+        frame,
+        text="Change Password",
+        command=lambda: change_user_password_dialog(root, user),
+    ).pack(pady=(8, 4))
+    ttk.Button(frame, text="Log out", command=on_logout).pack(pady=4)
+
+
+def change_user_password_dialog(root, user):
+    dialog = tk.Toplevel(root)
+    dialog.title("Change Password")
+    dialog.geometry("360x250")
+    dialog.resizable(False, False)
+    dialog.transient(root)
+    dialog.grab_set()
+    form = ttk.Frame(dialog, padding=20)
+    form.pack(fill="both", expand=True)
+    fields = {}
+    for row_index, (label, field_name) in enumerate(
+        (("Current Password", "current"), ("New Password", "new"), ("Confirm New Password", "confirm"))
+    ):
+        ttk.Label(form, text=label).grid(row=row_index, column=0, sticky="w", pady=5)
+        entry = ttk.Entry(form, show="*", width=25)
+        entry.grid(row=row_index, column=1, sticky="ew", pady=5)
+        fields[field_name] = entry
+    form.columnconfigure(1, weight=1)
+
+    def submit():
+        new_password = fields["new"].get()
+        if new_password != fields["confirm"].get():
+            messagebox.showerror("Password Error", "The new passwords do not match.", parent=dialog)
+            return
+        if authenticate_user(user["email"], fields["current"].get()) is None:
+            messagebox.showerror("Password Error", "The current password is incorrect.", parent=dialog)
+            return
+
+        confirmation = tk.Toplevel(dialog)
+        confirmation.title("Confirm Password Change")
+        confirmation.geometry("360x180")
+        confirmation.resizable(False, False)
+        confirmation.transient(dialog)
+        confirmation.grab_set()
+        confirm_frame = ttk.Frame(confirmation, padding=20)
+        confirm_frame.pack(fill="both", expand=True)
+        ttk.Label(confirm_frame, text="New password:").pack(anchor="w")
+        ttk.Label(confirm_frame, text=new_password, font=("Arial", 11, "bold")).pack(
+            anchor="w", pady=(3, 15)
+        )
+        buttons = ttk.Frame(confirm_frame)
+        buttons.pack(anchor="e")
+
+        def continue_change():
+            if change_user_password(user["user_id"], fields["current"].get(), new_password):
+                confirmation.destroy()
+                dialog.destroy()
+                messagebox.showinfo(
+                    "Password Changed", "Your password was changed successfully.", parent=root
+                )
+            else:
+                messagebox.showerror(
+                    "Password Error", "The current password is incorrect.", parent=confirmation
+                )
+
+        ttk.Button(buttons, text="Continue", command=continue_change).pack(side="left", padx=5)
+        ttk.Button(buttons, text="Cancel", command=confirmation.destroy).pack(side="left", padx=5)
+
+    ttk.Button(form, text="Save Password", command=submit).grid(row=3, column=1, sticky="e", pady=(12, 0))
+    fields["current"].focus_set()
 
 
 # Builds the dashboard controls and table, then loads the initial user list.
-def create_dashboard(root):
+def create_dashboard(root, on_logout):
     state = {
         "root": root,
         "all_rows": [],
         "sort_column": None,
         "sort_reverse": False,
+        "on_logout": on_logout,
     }
     root.title("Credit Rating & Loan Eligibility System")
     root.geometry("850x550")
@@ -130,44 +206,55 @@ def create_top_panel(state):
     root = state["root"]
     top_frame = ttk.Frame(root, padding=10)
     top_frame.grid(row=0, column=0, sticky="ew")
-    top_frame.columnconfigure(2, weight=1)
+    top_frame.columnconfigure(0, weight=1)
 
-    ttk.Button(
-        top_frame,
-        text="Import Update CSV",
-        command=lambda: upload_csv(state),
-    ).pack(side="left", padx=5)
-    ttk.Button(
-        top_frame,
-        text="Refresh List",
-        command=lambda: refresh_table(state),
-    ).pack(side="left", padx=5)
-    ttk.Button(
-        top_frame,
-        text="Delete Selected",
-        command=lambda: delete_selected(state),
-    ).pack(side="left", padx=5)
-    ttk.Button(
-        top_frame,
-        text="Add User",
-        command=lambda: add_user(state),
-    ).pack(side="left", padx=5)
+    data_actions = ttk.LabelFrame(top_frame, text="Data Management", padding=6)
+    data_actions.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+    for column in range(4):
+        data_actions.columnconfigure(column, weight=1)
+    data_buttons = (
+        ("Import Update CSV", lambda: upload_csv(state)),
+        ("Refresh List", lambda: refresh_table(state)),
+        ("Add User", lambda: add_user(state)),
+        ("Delete Selected", lambda: delete_selected(state)),
+    )
+    for column, (label, command) in enumerate(data_buttons):
+        ttk.Button(data_actions, text=label, command=command).grid(
+            row=0, column=column, sticky="ew", padx=4, pady=2
+        )
 
-    ttk.Label(top_frame, text="Search:").pack(side="left", padx=(18, 4))
+    account_actions = ttk.LabelFrame(top_frame, text="Account Management", padding=6)
+    account_actions.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+    for column in range(3):
+        account_actions.columnconfigure(column, weight=1)
+    account_buttons = (
+        ("Change Admin Password", lambda: change_admin_password_dialog(root)),
+        ("Change User Password", lambda: change_selected_user_password(state)),
+        ("Log out", state["on_logout"]),
+    )
+    for column, (label, command) in enumerate(account_buttons):
+        ttk.Button(account_actions, text=label, command=command).grid(
+            row=0, column=column, sticky="ew", padx=4, pady=2
+        )
+
+    search_frame = ttk.Frame(top_frame)
+    search_frame.grid(row=2, column=0, sticky="ew", pady=(0, 4))
+    search_frame.columnconfigure(1, weight=1)
+    ttk.Label(search_frame, text="Search:").grid(row=0, column=0, padx=(0, 6))
     state["search_var"] = tk.StringVar()
-    state["search_entry"] = ttk.Entry(top_frame, textvariable=state["search_var"], width=28)
-    state["search_entry"].pack(side="left", padx=4)
+    state["search_entry"] = ttk.Entry(search_frame, textvariable=state["search_var"])
+    state["search_entry"].grid(row=0, column=1, sticky="ew", padx=4)
     state["search_var"].trace_add("write", lambda *_: display_rows(state))
     ttk.Button(
-        top_frame,
+        search_frame,
         text="Clear",
         command=lambda: clear_search(state),
-    ).pack(side="left", padx=4)
+    ).grid(row=0, column=2, padx=(4, 0))
     ttk.Label(
         top_frame,
         text="Double-click any applicant row to compute Credit Rating & Loan Limits",
         font=("Arial", 9, "italic"),
-    ).pack(side="right", padx=10)
+    ).grid(row=3, column=0, sticky="w", pady=(0, 2))
 
 
 # Creates the sortable applicant table and binds double-click assessment behavior.
@@ -302,6 +389,141 @@ def delete_selected(state):
             conn.close()
 
 
+def change_selected_user_password(state):
+    selected_items = state["tree"].selection()
+    if not selected_items:
+        messagebox.showwarning("No Selection", "Select an applicant before changing their password.")
+        return
+
+    user_values = state["tree"].item(selected_items[0], "values")
+    user_id = user_values[0]
+    full_name = f"{user_values[1]} {user_values[2]}"
+    dialog = tk.Toplevel(state["root"])
+    dialog.title("Change User Password")
+    dialog.geometry("420x250")
+    dialog.resizable(False, False)
+    dialog.transient(state["root"])
+    dialog.grab_set()
+
+    form = ttk.Frame(dialog, padding=20)
+    form.pack(fill="both", expand=True)
+    ttk.Label(form, text=f"User: {full_name}").pack(anchor="w", pady=3)
+    ttk.Label(form, text=f"Email: {user_values[3]}").pack(anchor="w", pady=3)
+    ttk.Label(form, text="New password:").pack(anchor="w")
+    password_entry = ttk.Entry(form, show="*", width=32)
+    password_entry.pack(fill="x", pady=(3, 12))
+
+    def confirm_new_password():
+        new_password = password_entry.get()
+        if not new_password:
+            messagebox.showerror("Password Error", "Password cannot be empty.", parent=dialog)
+            return
+
+        confirmation = tk.Toplevel(dialog)
+        confirmation.title("Confirm Password Change")
+        confirmation.geometry("360x180")
+        confirmation.resizable(False, False)
+        confirmation.transient(dialog)
+        confirmation.grab_set()
+        confirm_frame = ttk.Frame(confirmation, padding=20)
+        confirm_frame.pack(fill="both", expand=True)
+        ttk.Label(confirm_frame, text="New password:").pack(anchor="w")
+        ttk.Label(confirm_frame, text=new_password, font=("Arial", 11, "bold")).pack(
+            anchor="w", pady=(3, 15)
+        )
+        buttons = ttk.Frame(confirm_frame)
+        buttons.pack(anchor="e")
+
+        def continue_change():
+            if set_user_password(user_id, new_password):
+                confirmation.destroy()
+                dialog.destroy()
+                messagebox.showinfo(
+                    "Password Changed",
+                    f"The password for {full_name} was changed.",
+                    parent=state["root"],
+                )
+            else:
+                messagebox.showerror(
+                    "Password Error", "Could not change the user password.", parent=confirmation
+                )
+
+        ttk.Button(buttons, text="Continue", command=continue_change).pack(side="left", padx=5)
+        ttk.Button(buttons, text="Cancel", command=confirmation.destroy).pack(side="left", padx=5)
+
+    buttons = ttk.Frame(form)
+    buttons.pack(anchor="e")
+    ttk.Button(buttons, text="Continue", command=confirm_new_password).pack(side="left", padx=5)
+    ttk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side="left", padx=5)
+    password_entry.focus_set()
+
+
+def change_admin_password_dialog(root):
+    dialog = tk.Toplevel(root)
+    dialog.title("Change Admin Password")
+    dialog.geometry("360x250")
+    dialog.resizable(False, False)
+    dialog.transient(root)
+    dialog.grab_set()
+    form = ttk.Frame(dialog, padding=20)
+    form.pack(fill="both", expand=True)
+    fields = {}
+    for row_index, (label, field_name) in enumerate(
+        (("Current Password", "current"), ("New Password", "new"), ("Confirm New Password", "confirm"))
+    ):
+        ttk.Label(form, text=label).grid(row=row_index, column=0, sticky="w", pady=5)
+        entry = ttk.Entry(form, show="*", width=25)
+        entry.grid(row=row_index, column=1, sticky="ew", pady=5)
+        fields[field_name] = entry
+    form.columnconfigure(1, weight=1)
+
+    def submit():
+        new_password = fields["new"].get()
+        if new_password != fields["confirm"].get():
+            messagebox.showerror("Password Error", "The new passwords do not match.", parent=dialog)
+            return
+        if not authenticate_admin(DEFAULT_USERNAME, fields["current"].get()):
+            messagebox.showerror("Password Error", "The current password is incorrect.", parent=dialog)
+            return
+
+        confirmation = tk.Toplevel(dialog)
+        confirmation.title("Confirm Password Change")
+        confirmation.geometry("360x180")
+        confirmation.resizable(False, False)
+        confirmation.transient(dialog)
+        confirmation.grab_set()
+        confirm_frame = ttk.Frame(confirmation, padding=20)
+        confirm_frame.pack(fill="both", expand=True)
+        ttk.Label(confirm_frame, text="New password:").pack(anchor="w")
+        ttk.Label(confirm_frame, text=new_password, font=("Arial", 11, "bold")).pack(
+            anchor="w", pady=(3, 15)
+        )
+        buttons = ttk.Frame(confirm_frame)
+        buttons.pack(anchor="e")
+
+        def continue_change():
+            if change_admin_password(
+                DEFAULT_USERNAME, fields["current"].get(), new_password
+            ):
+                confirmation.destroy()
+                dialog.destroy()
+                messagebox.showinfo(
+                    "Password Changed",
+                    "The admin password was changed successfully.",
+                    parent=root,
+                )
+            else:
+                messagebox.showerror(
+                    "Password Error", "The current password is incorrect.", parent=confirmation
+                )
+
+        ttk.Button(buttons, text="Continue", command=continue_change).pack(side="left", padx=5)
+        ttk.Button(buttons, text="Cancel", command=confirmation.destroy).pack(side="left", padx=5)
+
+    ttk.Button(form, text="Save Password", command=submit).grid(row=3, column=1, sticky="e", pady=(12, 0))
+    fields["current"].focus_set()
+
+
 # Opens a form for entering and saving a new user profile.
 def add_user(state):
     dialog = tk.Toplevel(state["root"])
@@ -411,7 +633,7 @@ def on_row_double_click(event, state):
 
     pop = tk.Toplevel(state["root"])
     pop.title(f"Credit Score Assessment: {full_name}")
-    pop.geometry("450x300")
+    pop.geometry("520x380")
     pop.resizable(False, False)
     ttk.Label(pop, text="Assessment Report", font=("Arial", 14, "bold")).pack(pady=15)
     ttk.Label(pop, text=f"Applicant: {full_name}", font=("Arial", 11)).pack(pady=5)
@@ -428,4 +650,69 @@ def on_row_double_click(event, state):
         font=("Arial", 11, "bold"),
         foreground="navy",
     ).pack(pady=10)
+    ttk.Button(
+        pop,
+        text="View Details",
+        command=lambda: show_financial_details(pop, user_id, full_name),
+    ).pack(pady=5)
     ttk.Button(pop, text="Close", command=pop.destroy).pack(pady=15)
+
+
+def show_financial_details(parent, user_id, full_name):
+    details = tk.Toplevel(parent)
+    details.title(f"Financial Details: {full_name}")
+    details.geometry("820x320")
+    details.resizable(True, True)
+    details.transient(parent)
+
+    columns = (
+        "record_date",
+        "monthly_income",
+        "existing_loan_emi",
+        "credit_card_utilization",
+        "missed_payments_count",
+    )
+    headings = {
+        "record_date": "Record Date",
+        "monthly_income": "Monthly Income",
+        "existing_loan_emi": "Existing Loan EMI",
+        "credit_card_utilization": "Credit Card Utilization",
+        "missed_payments_count": "Missed Payments",
+    }
+    frame = ttk.Frame(details, padding=12)
+    frame.pack(fill="both", expand=True)
+    frame.columnconfigure(0, weight=1)
+    frame.rowconfigure(0, weight=1)
+    tree = ttk.Treeview(frame, columns=columns, show="headings")
+    for column in columns:
+        tree.heading(column, text=headings[column])
+        tree.column(column, width=145, anchor="center")
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    scrollbar.grid(row=0, column=1, sticky="ns")
+
+    conn = None
+    try:
+        conn = get_connection()
+        records = conn.execute(
+            """
+            SELECT record_date, monthly_income, existing_loan_emi,
+                   credit_card_utilization, missed_payments_count
+            FROM financial_records
+            WHERE user_id = ?
+            ORDER BY record_date DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        for record in records:
+            tree.insert("", "end", values=record)
+        if not records:
+            ttk.Label(details, text="No financial records available.").pack(pady=8)
+    except Exception as error:
+        messagebox.showerror("Details Error", f"Could not load financial details: {error}", parent=details)
+    finally:
+        if conn is not None:
+            conn.close()
+
+    ttk.Button(details, text="Close", command=details.destroy).pack(pady=(0, 10))
