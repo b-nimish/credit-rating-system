@@ -2,57 +2,109 @@ import sqlite3
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from src.auth import DEFAULT_USERNAME, authenticate
+from src.auth import (
+    DEFAULT_USERNAME,
+    authenticate_admin,
+    authenticate_user,
+    generate_user_password,
+    hash_user_password,
+)
 from src.credit_engine import calculate_credit_score
 from src.csv_parser import import_csv_update
 from src.database import get_connection
 
 
 # Creates the login form and connects it to the dashboard callback.
-def create_login_window(root, on_success):
+def create_login_window(root, on_admin_success, on_user_success):
     root.title("Credit Rating System - Login")
-    root.geometry("360x220")
+    root.geometry("420x300")
     root.resizable(False, False)
 
     frame = ttk.Frame(root, padding=30)
     frame.pack(expand=True, fill="both")
 
-    ttk.Label(frame, text="Sign in", font=("Arial", 16, "bold")).pack(pady=(0, 18))
-    ttk.Label(frame, text="Username").pack(anchor="w")
-    username_entry = ttk.Entry(frame)
-    username_entry.pack(fill="x", pady=(2, 10))
-    username_entry.insert(0, DEFAULT_USERNAME)
+    ttk.Label(frame, text="Choose login type", font=("Arial", 16, "bold")).pack(pady=(0, 22))
+    ttk.Button(frame, text="Admin Login", command=lambda: show_login_form(
+        root, "Admin Login", "Username", DEFAULT_USERNAME, on_admin_success, False
+    )).pack(fill="x", pady=6)
+    ttk.Button(frame, text="User Login", command=lambda: show_login_form(
+        root, "User Login", "Email", "", on_user_success, True
+    )).pack(fill="x", pady=6)
 
+
+def show_login_form(root, title, identity_label, default_identity, on_success, is_user):
+    for widget in root.winfo_children():
+        widget.destroy()
+    root.title(f"Credit Rating System - {title}")
+    frame = ttk.Frame(root, padding=30)
+    frame.pack(expand=True, fill="both")
+    ttk.Label(frame, text=title, font=("Arial", 16, "bold")).pack(pady=(0, 18))
+    ttk.Label(frame, text=identity_label).pack(anchor="w")
+    identity_entry = ttk.Entry(frame)
+    identity_entry.pack(fill="x", pady=(2, 10))
+    identity_entry.insert(0, default_identity)
     ttk.Label(frame, text="Password").pack(anchor="w")
     password_entry = ttk.Entry(frame, show="*")
     password_entry.pack(fill="x", pady=(2, 12))
     status_label = ttk.Label(frame, text="")
     status_label.pack()
-
-    login_button = ttk.Button(
+    ttk.Button(
         frame,
         text="Log in",
-        command=lambda: login(root, username_entry, password_entry, status_label, on_success),
-    )
-    login_button.pack(pady=6)
+        command=lambda: login(
+            root, identity_entry, password_entry, status_label, on_success, is_user
+        ),
+    ).pack(pady=6)
+    ttk.Button(frame, text="Back", command=lambda: create_login_window(
+        root, on_success if not is_user else lambda: None, on_success if is_user else lambda _: None
+    )).pack()
     password_entry.bind(
         "<Return>",
-        lambda event: login(root, username_entry, password_entry, status_label, on_success),
+        lambda event: login(root, identity_entry, password_entry, status_label, on_success, is_user),
     )
-    username_entry.focus_set()
+    identity_entry.focus_set()
 
 
 # Validates login fields and opens the protected dashboard after successful authentication.
-def login(root, username_entry, password_entry, status_label, on_success):
-    username = username_entry.get().strip()
+def login(root, identity_entry, password_entry, status_label, on_success, is_user):
+    identity = identity_entry.get().strip()
     password = password_entry.get()
-    if authenticate(username, password):
-        on_success()
+    result = authenticate_user(identity, password) if is_user else authenticate_admin(identity, password)
+    if result:
+        on_success(result) if is_user else on_success()
         return
 
     status_label.configure(text="Invalid username or password")
     password_entry.delete(0, tk.END)
     password_entry.focus_set()
+
+
+def create_user_view(root, user):
+    root.title("My Loan Eligibility")
+    root.geometry("480x360")
+    root.resizable(False, False)
+    frame = ttk.Frame(root, padding=30)
+    frame.pack(expand=True, fill="both")
+
+    score, status, max_loan = calculate_credit_score(user["user_id"])
+    full_name = f"{user['first_name']} {user['last_name']}"
+    ttk.Label(frame, text="Loan Eligibility", font=("Arial", 18, "bold")).pack(pady=(0, 18))
+    ttk.Label(frame, text=f"Applicant: {full_name}", font=("Arial", 11)).pack(pady=5)
+    ttk.Label(frame, text=f"Email: {user['email']}").pack(pady=5)
+    ttk.Label(
+        frame,
+        text=f"Credit Score: {score} / 850",
+        font=("Arial", 14, "bold"),
+        foreground="green" if score >= 650 else "red",
+    ).pack(pady=10)
+    ttk.Label(frame, text=f"Eligibility Status: {status}", font=("Arial", 11)).pack(pady=5)
+    ttk.Label(
+        frame,
+        text=f"Maximum Qualified Loan Amount: Rs.{max_loan:,}",
+        font=("Arial", 12, "bold"),
+        foreground="navy",
+    ).pack(pady=10)
+    ttk.Button(frame, text="Close", command=root.quit).pack(pady=15)
 
 
 # Builds the dashboard controls and table, then loads the initial user list.
@@ -290,14 +342,15 @@ def save_user(dialog, entries, state):
         messagebox.showwarning("Incomplete Details", "Please complete every field.", parent=dialog)
         return
 
+    generated_password = generate_user_password(values["first_name"], values["last_name"])
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO users (first_name, last_name, email, date_of_birth, employment_status)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO users (first_name, last_name, email, date_of_birth, employment_status, password_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 values["first_name"],
@@ -305,6 +358,7 @@ def save_user(dialog, entries, state):
                 values["email"].lower(),
                 values["date_of_birth"],
                 values["employment_status"],
+                hash_user_password(generated_password),
             ),
         )
         conn.commit()
@@ -324,7 +378,11 @@ def save_user(dialog, entries, state):
 
     dialog.destroy()
     refresh_table(state)
-    messagebox.showinfo("User Added", "The new user was added successfully.", parent=state["root"])
+    messagebox.showinfo(
+        "User Added",
+        f"The new user was added successfully.\n\nUser email: {values['email'].lower()}\nInitial password: {generated_password}",
+        parent=state["root"],
+    )
 
 
 # Opens a CSV picker, imports the selected update file, and refreshes the table on success.

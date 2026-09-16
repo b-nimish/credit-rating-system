@@ -43,6 +43,7 @@ Stores permanent identity information for registered consumers.
 * `email` (TEXT, Unique): Unique anchor point used to map CSV data imports.
 * `date_of_birth` (TEXT): Age tracking parameter.
 * `employment_status` (TEXT): Working status (e.g., *Employed, Self-Employed, Unemployed*).
+* `password_hash` (TEXT): PBKDF2 hash used for user login; plaintext passwords are not stored.
 
 ### 2. `financial_records` Table
 Tracks sequential, historical financial snapshots over time fed by periodic CSV updates.
@@ -76,20 +77,21 @@ Launch the primary initialization script. On your very first boot, the system wi
 python main.py
 ```
 
-The application displays a login screen before opening the dashboard. Use the default credentials:
+The application displays a role selection screen before opening the protected area. Use the default admin credentials:
 
 * **Username:** `admin`
 * **Password:** `password`
+
+User passwords follow the simple lowercase `namesurname123` format, for example `arjunsharma123`. Credentials are written to `data/user_credentials.csv`; users sign in with their email and formatted password. New users added by an administrator receive their initial password in the confirmation dialog.
 
 ---
 
 ## 🕹️ How to Use the Application
 
-1. **Log in:** Enter the default credentials before accessing the dashboard:
-   * **Username:** `admin`
-   * **Password:** `password`
-   Database initialization and dashboard loading occur only after successful authentication.
-2. **Dashboard Overview:** The primary window displays a grid list of all generated profiles.
+1. **Choose a login:** Select **Admin Login** to manage profiles and financial updates, or **User Login** to view one applicant's eligibility.
+2. **Admin login:** Enter `admin` and `password` to access the dashboard.
+3. **User login:** Enter an email and its generated password to see only that user's credit score, eligibility status, and maximum qualified loan amount.
+4. **Dashboard Overview:** The primary window displays a grid list of all generated profiles.
 3. **Search and filter:** Use the **Search** field to filter rows as you type. The search checks the ID, first name, last name, email, and employment status. Click **Clear** to remove the filter.
 4. **Sort entries:** Click a column header to sort by that column. Click the same header again to reverse the order. IDs are sorted numerically, while text columns are sorted alphabetically without case sensitivity.
 5. **Refresh the list:** Click **Refresh List** to reload the latest users from the database. This redraws the table but does not modify database records or recalculate scores.

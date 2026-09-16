@@ -22,9 +22,13 @@ def init_db():
             last_name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             date_of_birth TEXT NOT NULL,
-            employment_status TEXT NOT NULL
+            employment_status TEXT NOT NULL,
+            password_hash TEXT
         )
     ''')
+    columns = {row[1] for row in cursor.execute("PRAGMA table_info(users)")}
+    if "password_hash" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
     
     # Create financial_records table
     cursor.execute('''
